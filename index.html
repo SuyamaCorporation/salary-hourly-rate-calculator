@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>年収→時給換算計算機</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+<div id="app" class="max-w-2xl mx-auto p-4">
+  <h1 class="text-2xl font-bold text-center mb-6 text-green-400">💴 年収→時給換算計算機</h1>
+
+  <div class="bg-gray-800 rounded-lg p-4 mb-6">
+    <h2 class="text-lg font-semibold mb-4 text-yellow-300">給与条件を入力</h2>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">年収（万円）</label>
+        <input id="annual" type="number" value="500" min="1" class="w-full bg-gray-700 rounded px-3 py-2 text-white text-xl font-bold">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">週労働時間（時間）</label>
+          <input id="weekly-hours" type="number" value="40" min="1" max="80" class="w-full bg-gray-700 rounded px-3 py-2 text-white">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">年間休日数（日）</label>
+          <input id="holidays" type="number" value="120" min="0" max="365" class="w-full bg-gray-700 rounded px-3 py-2 text-white">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">フリーランス単価（万円/月）※比較用</label>
+        <input id="freelance" type="number" value="80" min="0" class="w-full bg-gray-700 rounded px-3 py-2 text-white">
+      </div>
+      <button id="calc-btn" class="w-full bg-green-600 hover:bg-green-700 rounded-lg py-3 font-bold">計算する</button>
+    </div>
+  </div>
+
+  <div id="results" class="hidden space-y-4">
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-3 text-yellow-300">📊 計算結果</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-gray-700 rounded p-3 text-center">
+          <div class="text-xs text-gray-400 mb-1">実質時給（額面）</div>
+          <div id="hourly-gross" class="text-2xl font-bold text-green-400"></div>
+        </div>
+        <div class="bg-gray-700 rounded p-3 text-center">
+          <div class="text-xs text-gray-400 mb-1">実質時給（手取り概算）</div>
+          <div id="hourly-net" class="text-2xl font-bold text-blue-400"></div>
+        </div>
+        <div class="bg-gray-700 rounded p-3 text-center">
+          <div class="text-xs text-gray-400 mb-1">年間労働時間</div>
+          <div id="work-hours" class="text-xl font-bold text-gray-200"></div>
+        </div>
+        <div class="bg-gray-700 rounded p-3 text-center">
+          <div class="text-xs text-gray-400 mb-1">手取り年収概算</div>
+          <div id="net-annual" class="text-xl font-bold text-gray-200"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-3 text-yellow-300">💼 フリーランス比較</h2>
+      <div id="freelance-compare" class="space-y-2 text-sm"></div>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-3 text-yellow-300">📉 控除内訳（概算）</h2>
+      <div id="deduction-breakdown" class="space-y-2 text-sm"></div>
+    </div>
+  </div>
+</div>
+<script>
+function calcNet(annual) {
+  const a = annual * 10000;
+  // 社会保険料概算（約15%）
+  const social = a * 0.15;
+  // 給与所得控除
+  let giveDeduct;
+  if (a <= 1800000) giveDeduct = a * 0.4;
+  else if (a <= 3600000) giveDeduct = a * 0.3 + 180000;
+  else if (a <= 6600000) giveDeduct = a * 0.2 + 540000;
+  else if (a <= 8500000) giveDeduct = a * 0.1 + 1200000;
+  else giveDeduct = 1950000;
+
+  const taxableBase = Math.max(0, a - giveDeduct - social - 480000);
+  let incomeTax = 0;
+  if (taxableBase <= 1950000) incomeTax = taxableBase * 0.05;
+  else if (taxableBase <= 3300000) incomeTax = taxableBase * 0.10 - 97500;
+  else if (taxableBase <= 6950000) incomeTax = taxableBase * 0.20 - 427500;
+  else if (taxableBase <= 9000000) incomeTax = taxableBase * 0.23 - 636000;
+  else incomeTax = taxableBase * 0.33 - 1536000;
+  incomeTax = Math.max(0, incomeTax) * 1.021; // 復興特別税
+  const residentTax = taxableBase * 0.10;
+  const totalDeduct = social + incomeTax + residentTax;
+  const net = a - totalDeduct;
+  return { net, social, incomeTax, residentTax, totalDeduct };
+}
+
+document.getElementById('calc-btn').addEventListener('click', () => {
+  const annual = parseFloat(document.getElementById('annual').value) || 0;
+  const weeklyH = parseFloat(document.getElementById('weekly-hours').value) || 40;
+  const holidays = parseFloat(document.getElementById('holidays').value) || 0;
+  const freelance = parseFloat(document.getElementById('freelance').value) || 0;
+
+  const workDays = 365 - holidays;
+  const workHours = workDays * weeklyH / 5;
+  const hourlyGross = Math.round(annual * 10000 / workHours);
+
+  const { net, social, incomeTax, residentTax, totalDeduct } = calcNet(annual);
+  const hourlyNet = Math.round(net / workHours);
+
+  document.getElementById('hourly-gross').textContent = hourlyGross.toLocaleString() + ' 円';
+  document.getElementById('hourly-net').textContent = hourlyNet.toLocaleString() + ' 円';
+  document.getElementById('work-hours').textContent = Math.round(workHours).toLocaleString() + ' 時間/年';
+  document.getElementById('net-annual').textContent = Math.round(net / 10000) + ' 万円';
+
+  // フリーランス比較
+  const freeAnnual = freelance * 12;
+  const freeWorkDays = 365 - 60; // 自営業者は休日少なめ
+  const freeWorkHours = freeWorkDays * weeklyH / 5;
+  const freeHourly = Math.round(freeAnnual * 10000 / freeWorkHours);
+  const diff = freeHourly - hourlyGross;
+
+  const fcDiv = document.getElementById('freelance-compare');
+  fcDiv.innerHTML = '';
+  const rows = [
+    ['フリーランス月単価', freelance + ' 万円'],
+    ['フリーランス年収', freeAnnual + ' 万円'],
+    ['フリーランス時給（概算）', freeHourly.toLocaleString() + ' 円'],
+    ['時給差（FL-会社員）', (diff >= 0 ? '+' : '') + diff.toLocaleString() + ' 円'],
+  ];
+  rows.forEach(([label, val]) => {
+    const p = document.createElement('div');
+    p.className = 'flex justify-between border-b border-gray-700 pb-1';
+    const l = document.createElement('span');
+    l.className = 'text-gray-400';
+    l.textContent = label;
+    const v = document.createElement('span');
+    v.className = diff >= 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold';
+    v.textContent = val;
+    p.appendChild(l);
+    p.appendChild(v);
+    fcDiv.appendChild(p);
+  });
+
+  const dbDiv = document.getElementById('deduction-breakdown');
+  dbDiv.innerHTML = '';
+  const dRows = [
+    ['社会保険料（概算15%）', Math.round(social / 10000) + ' 万円'],
+    ['所得税（概算）', Math.round(incomeTax / 10000) + ' 万円'],
+    ['住民税（概算10%）', Math.round(residentTax / 10000) + ' 万円'],
+    ['合計控除額', Math.round(totalDeduct / 10000) + ' 万円'],
+    ['実効税率', (totalDeduct / (annual * 10000) * 100).toFixed(1) + '%'],
+  ];
+  dRows.forEach(([label, val]) => {
+    const p = document.createElement('div');
+    p.className = 'flex justify-between border-b border-gray-700 pb-1';
+    const l = document.createElement('span');
+    l.className = 'text-gray-400';
+    l.textContent = label;
+    const v = document.createElement('span');
+    v.textContent = val;
+    p.appendChild(l);
+    p.appendChild(v);
+    dbDiv.appendChild(p);
+  });
+
+  document.getElementById('results').classList.remove('hidden');
+});
+
+// Auto-calculate on load
+document.getElementById('calc-btn').click();
+</script>
+</body>
+</html>
